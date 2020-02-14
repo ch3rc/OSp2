@@ -6,6 +6,7 @@
 //File:		main.c
 //===================================================================================
 
+#include "flags.h"
 
 int main(int argc, char *argv[])
 {
@@ -18,6 +19,8 @@ int main(int argc, char *argv[])
 	{
 		help();
 	}
+
+	print();
 
 	return 0;
 }
