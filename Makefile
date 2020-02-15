@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -I. -g
 TARGET = oss
-OBJS = main.o flags.o
+OBJS = oss.o
 .SUFFIXES: .c .o
 
 $(TARGET) : $(OBJS)
