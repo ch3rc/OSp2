@@ -5,10 +5,10 @@ CFLAGS = -I. -Wall -g
 all: oss handleChild
 
 oss: oss.o
-	$(CC) $(CFLAGS) -o $@ oss.o -pthread
+	$(CC) $(CFLAGS) -o $@ oss.o
 
 handleChild: handleChild.o
-	$(CC) $(CFLAGS) -o $@ handleChild.o -pthread
+	$(CC) $(CFLAGS) -o $@ handleChild.o
 
 .c.o:
 	$(CC) $(CFLAGS) -c $<
