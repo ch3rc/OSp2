@@ -19,11 +19,12 @@
 #include <sys/shm.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <signal.h>
+#include <sys/time.h>
 
-#define TESTKEY 0x12345678
-#define START -1
-#define RUN 0
-#define FIN 1
+#define CLOCK 0x12345678
+#define MESSAGE 0x87654321
+#define ARRAY 0x98765432
 
 extern int h_help;
 extern int n_maxChild;
@@ -31,11 +32,17 @@ extern int s_allowedChildren;
 extern int b_startNum;
 extern int i_increment;
 extern int o_outputFile;
+extern int numChildren;
 
 struct clock{
 	int status;
 	int nano;
 	int sec;
+};
+
+struct message{
+	int id;
+	int num;
 };
 
 void initOpt();

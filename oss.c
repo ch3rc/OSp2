@@ -23,19 +23,53 @@ int b_startNum;
 int i_increment;
 int o_outputFile;
 
-key_t key = TESTKEY;
+key_t key = CLOCK;
+key_t key2 = MESSAGE;
+key_t key3 = ARRAY;
+
 size_t clockSize = sizeof(struct clock *);
+size_t msgSize = sizeof(struct message *);
+
 int clockId = 0;
+int msgId = 0;
+int arrId = 0;
+
 struct clock *clockPtr = NULL;
-struct shmid_ds test;
+struct message *msgPtr = NULL;
+int *arrPtr = NULL;
+
 pid_t childPid = 0;
+int exitPid = 0;
+
+int status;
+int *pids;
+int pidSize = 0;
+int i = 0;
+int j = 1;
+int dead = 0;
+int primes = 0;
+int nonPrimes = 0;
+int launched = 0;
+int *nums;
+struct sigaction act, catch;
 
 //============================================================================================
 
 struct clock *clockMem(key_t key, size_t size, int *shmid);
+struct message *message(key_t key, size_t size, int *shmid);
+int *childResults(key_t key, size_t size, int *shmid);
+void cleanUp(void *, int);
+void timesUp(int, siginfo_t *, void *);
+void userEnd(int, siginfo_t *, void *);
+static int setAlarm();
 
-void main(int argc, char *argv[])
+//============================================================================================
+
+int main(int argc, char *argv[])
 {	
+	int prime[numChildren];
+	int nonPrime[numChildren];
+
 	initOpt();
 
 	setOpt(argc, argv);
@@ -44,94 +78,136 @@ void main(int argc, char *argv[])
 	{
 		help();
 	}
+
+	//signal handler for two second alarm
+	act.sa_sigaction = timesUp;
+	sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
+	sigaction(SIGALRM, &act, NULL);
 	
+	//signal handler for ctrl+c
+	catch.sa_sigaction = userEnd;
+	sigemptyset(&catch.sa_mask);
+	act.sa_flags = 0;
+	sigaction(SIGINT, &catch, NULL);
+
 	printf("allocating memory for clock\n\n");
-
+	
+	//memory allocations for clock, return message, and result array
 	clockPtr = clockMem(key, clockSize, &clockId);
-	
-	/*clockId = shmget(key, sizeof(struct clock *), PERM);
-	if(clockId < 0)
+	msgPtr = message(key2, msgSize, &msgId);
+	arrPtr = childResults(key3, numChildren * sizeof(int), &arrId);
+
+	//init result array spots to zero
+	for(i = 0; i < numChildren; i++)
 	{
-		perror("shmget");
-		exit(1);
+		arrPtr[i] = 0;
 	}
 
-	clockPtr = (struct clock *)shmat(clockId, NULL, 0);
-	if(clockPtr == (void *)-1)
+	for(i = 0; i < allowedChildren; i++)
 	{
-		perror("shmat");
-		exit(1);
-	}*/
-	
-	clockPtr->status = START;
-	
-	childPid = fork();
-
-	if(childPid < 0)
-	{
-		perror("fork");
-		exit(1);
+		pidSize++;
+		pids = realloc(pids, pidSize);
+		pids[i] = 0;
 	}
 
-	if(childPid > 0)
-	{
-		printf("child terminated regularly\n\n");
-	}
-
-	if(childPid == 0)
-	{	char str[25];
-		char id[25];
-		snprintf(str, sizeof(str), "%d", 101);
-		snprintf(id, sizeof(id), "%d", 1);
-		execlp("./handleChild", str, id, NULL);
-	}	
-
-	while(clockPtr->status != RUN)
-		sleep(1);
 	
 	printf("starting clock\n\n");
+
+	setAlarm();
 	
-	printf("test line\n\n");
-	
-	while(1)
+	FILE *fp = fopen(filename, "a");
+	if(fp == NULL)
 	{
-	
+		perror("file");
+		exit(1);
+	}
+
+	while(dead != numChildren)
+	{	
+		//start clock	
 		clockPtr->nano += 1;
 		if(clockPtr->nano == 100000000)
 		{
-			printf("one second\n");
 			clockPtr->sec += 1;
 			clockPtr->nano = 0;
-		}
+		}		
 		
-		if(clockPtr->sec == 2)
+		//launch max allowed children in system at one time
+		if(launched < allowedChildren)
 		{
-			printf("finished\n");
-			break;
+			childPid = fork();
+			if(childPid < 0)
+			{
+				perror("fork");
+				exit(1);
+			}
+
+			if(childPid == 0)
+			{
+				char str[25];
+				char id[25];
+				snprintf(str, sizeof(str), "%d", number);
+				snprintf(id, sizeof(id), "%d", j);
+				execlp("./handleChild", str, id, NULL);
+			}
+			//add children to pid array and store time of launch
+			launched++;
+			fprintf(fp,"child %d launched at %d nano %d sec\n\n", j, clockPtr->nano, clockPtr->sec);
+			pids[launched - 1] = childPid;
+			j++;
+			number += incrementBy;
+			
+
+			//see if child has exited and mark time if it did
+			for(i = 0; i < pidSize; i++)
+			{	
+				if((exitPid = waitpid(pids[i], &status, 0)) > 0)
+				{	
+					if(WIFEXITED(status))
+					{
+						fprintf(fp,"child %d finished at %d nano %d sec with result %d\n\n", msgPtr->id, clockPtr->nano, clockPtr->sec, arrPtr[msgPtr->id - 1]);
+						
+						//store primes/nonprimes in arrays to display at end of file
+						if(arrPtr[msgPtr->id - 1] > 0)
+						{
+							prime[primes] = arrPtr[msgPtr->id - 1];
+							primes++;
+						}
+						else if(arrPtr[msgPtr->id - 1] < 0 && arrPtr[msgPtr->id -1] != 1)
+						{
+							nonPrime[nonPrimes] = arrPtr[msgPtr->id - 1];
+							nonPrimes++;
+						}
+						dead++;
+						pids[i] = 0;
+						launched--;
+					}
+	
+				}
+			}
+
 		}
+				
 	}
 	
-	while(clockPtr->status != FIN)	
-		sleep(1);
+	for(i = 0; i < primes; i++)
+	{
+		fprintf(fp,"primes %d\n", prime[i]);
+	}
 
-	printf("detaching memory in oss.c\n\n");	
-	
-	if(shmdt((void *)clockPtr) == -1)
-		perror("oss shmdt");
+	for(i = 0; i < nonPrimes; i++)
+	{
+		fprintf(fp,"nonPrimes %d\n", nonPrime[i]);
+	}
 
-	printf("server detached memory\n\n");
+	cleanUp(clockPtr, clockId);
+	cleanUp(msgPtr, msgId);
+	cleanUp(arrPtr, arrId);
+	fclose(fp);	
+	//print();
 	
-	if(shmctl(clockId, IPC_RMID, &test) == -1)
-		perror("shmctl");
-		
-	printf("memory removed in oss.c\n\n");
-
-	printf("program exiting oss.c\n");
-	
-
-	print();
-	
-	exit(0);
+	return 0;
 }
 
 //=========================================Getopt==================================================
@@ -206,7 +282,7 @@ void setOpt(int argc, char *argv[])
 
 void print()
 {
-	printf("-h = d\n", h_help);
+	printf("-h = %d\n", h_help);
 	printf("-n = %d children = %d\n", n_maxChild, numChildren);
 	printf("-s = %d allowed children = %d\n", s_allowedChildren, allowedChildren);
 	printf("-b = %d number = %d\n", b_startNum, number);
@@ -222,7 +298,7 @@ struct clock *clockMem(key_t key, size_t size, int *shmid)
 	*shmid = shmget(key, size, PERM);
 	if(*shmid < 0)
 	{
-		perror("shmget");
+		perror("oss: ERROR: shmget (clock)");
 		exit(1);
 	}
 	
@@ -230,10 +306,134 @@ struct clock *clockMem(key_t key, size_t size, int *shmid)
 
 	if(temp == (void *)-1)
 	{
-		perror("shmat");
+		perror("oss: ERROR: shmat (clock)");
 		exit(1);
 	}
 
 	return temp;
 }
 
+struct message *message(key_t key, size_t size, int *shmid)
+{
+	*shmid = shmget(key, size, PERM);
+	if(*shmid < 0)
+	{
+		perror("oss: ERROR: shmget (message)");
+		exit(1);
+	}
+
+	struct message *temp = (struct message *)shmat(*shmid, NULL, 0);
+
+	if(temp == (void *)-1)
+	{
+		perror("oss: ERROR: shmat (message)");
+		exit(1);
+	}
+	return temp;
+}
+
+int *childResults(key_t key, size_t size, int *shmid)
+{
+	*shmid = shmget(key, size, PERM);
+	if(*shmid < 0)
+	{
+		perror("oss: ERROR: shmget (childResults)");
+		exit(1);
+	}
+	
+	int *temp = (int *)shmat(*shmid, NULL, 0);
+	if(temp == (void *)-1)
+	{
+		perror("oss: ERROR: shmat (childResults)");
+		exit(1);
+	}
+
+	return temp;
+}
+
+void cleanUp(void *ptr, int id)
+{
+
+	if(shmdt(ptr) == -1)
+	{
+		perror("oss: ERROR: shmdt (cleanUp function)");
+		exit(1);
+	}
+
+	if(shmctl(id, IPC_RMID, NULL) == -1)
+	{
+		perror("oss: ERROR: shmctl (cleanUp function)");
+		exit(1);
+	}
+}
+
+//===========================Signal Handling==============================================
+
+void timesUp(int sig, siginfo_t *info, void *ptr)
+{
+	
+	char msg[] = "Program times out at 2 seconds\n";
+	int msgLen = sizeof(msg);
+	write(STDERR_FILENO, msg, msgLen);
+
+	printf("timesUp executed at %dnano %dsec\n\n", clockPtr->nano, clockPtr->sec);		
+	shmdt((void *)clockPtr);
+	shmdt((void *)msgPtr);
+	shmdt((void *)arrPtr);
+	shmctl(clockId, IPC_RMID, NULL);
+	shmctl(msgId, IPC_RMID, NULL);
+	shmctl(arrId, IPC_RMID, NULL);
+
+	int i;
+	for(i = 0; i < pidSize; i++)
+	{
+		if(pids[i] != 0)
+		{
+			if(kill(pids[i], SIGTERM) == -1)
+				perror("oss: ERROR: SIGTERM (alarm)");
+		}
+	}
+		
+	free(pids);
+	exit(0);
+}
+
+void userEnd(int signo, siginfo_t *info, void *ptr)
+{
+	char msg[] = "Caught CTRL + C while running\n\n";
+	int len = sizeof(msg);
+	write(STDERR_FILENO, msg, len);
+	
+	printf("caught it at %d nano %d sec\n\n", clockPtr->nano, clockPtr->sec);
+	shmdt((void *)clockPtr);
+	shmdt((void *)msgPtr);
+	shmdt((void *)arrPtr);
+	shmctl(clockId, IPC_RMID, NULL);
+	shmctl(msgId, IPC_RMID, NULL);
+	shmctl(arrId, IPC_RMID, NULL);
+
+	int i;
+	for(i = 0; i < pidSize; i++)
+	{
+		if(pids[i] != 0)
+		{
+			if(kill(pids[i], SIGTERM) == -1)
+				perror("oss: ERROR: SIGTERM (ctrl+c)");
+		}
+	}
+
+	free(pids);
+
+	exit(0);
+}
+
+static int setAlarm()
+{
+	
+	struct itimerval timer;
+	timer.it_value.tv_sec = 2;
+	timer.it_value.tv_usec = 0;
+	timer.it_interval.tv_sec = 0;
+	timer.it_interval.tv_usec = 0;
+	return (setitimer(ITIMER_REAL, &timer, NULL));
+}
