@@ -90,8 +90,6 @@ int main(int argc, char *argv[])
 	sigemptyset(&catch.sa_mask);
 	act.sa_flags = 0;
 	sigaction(SIGINT, &catch, NULL);
-
-	printf("allocating memory for clock\n\n");
 	
 	//memory allocations for clock, return message, and result array
 	clockPtr = clockMem(key, clockSize, &clockId);
@@ -103,7 +101,8 @@ int main(int argc, char *argv[])
 	{
 		arrPtr[i] = 0;
 	}
-
+	
+	//create array to restrict max amount of pids allowed
 	for(i = 0; i < allowedChildren; i++)
 	{
 		pidSize++;
@@ -111,8 +110,6 @@ int main(int argc, char *argv[])
 		pids[i] = 0;
 	}
 
-	
-	printf("starting clock\n\n");
 
 	setAlarm();
 	
@@ -122,8 +119,8 @@ int main(int argc, char *argv[])
 		perror("file");
 		exit(1);
 	}
-
-	while(dead != numChildren)
+	
+	while(1)
 	{	
 		//start clock	
 		clockPtr->nano += 1;
@@ -134,7 +131,7 @@ int main(int argc, char *argv[])
 		}		
 		
 		//launch max allowed children in system at one time
-		if(launched < allowedChildren)
+		if(launched < allowedChildren && dead != numChildren)
 		{
 			childPid = fork();
 			if(childPid < 0)
@@ -158,44 +155,53 @@ int main(int argc, char *argv[])
 			j++;
 			number += incrementBy;
 			
-
+		}
 			//see if child has exited and mark time if it did
-			for(i = 0; i < pidSize; i++)
+		for(i = 0; i < pidSize; i++)
+		{	
+			if((exitPid = waitpid(pids[i], &status, 0)) > 0)
 			{	
-				if((exitPid = waitpid(pids[i], &status, 0)) > 0)
-				{	
+				if(WIFEXITED(status))
+				{
 					if(WIFEXITED(status))
 					{
-						fprintf(fp,"child %d finished at %d nano %d sec with result %d\n\n", msgPtr->id, clockPtr->nano, clockPtr->sec, arrPtr[msgPtr->id - 1]);
+					fprintf(fp,"child %d finished at %d nano %d sec with result %d\n\n", msgPtr->id, clockPtr->nano, clockPtr->sec, arrPtr[msgPtr->id - 1]);
 						
-						//store primes/nonprimes in arrays to display at end of file
-						if(arrPtr[msgPtr->id - 1] > 0)
-						{
-							prime[primes] = arrPtr[msgPtr->id - 1];
-							primes++;
-						}
-						else if(arrPtr[msgPtr->id - 1] < 0 && arrPtr[msgPtr->id -1] != 1)
-						{
-							nonPrime[nonPrimes] = arrPtr[msgPtr->id - 1];
-							nonPrimes++;
-						}
-						dead++;
-						pids[i] = 0;
-						launched--;
+					//store primes/nonprimes in arrays to display at end of file
+					if(arrPtr[msgPtr->id - 1] > 0)
+					{
+						prime[primes] = arrPtr[msgPtr->id - 1];
+						primes++;
 					}
-	
+					else if(arrPtr[msgPtr->id - 1] < 0 && arrPtr[msgPtr->id -1] != 1)
+					{
+						nonPrime[nonPrimes] = arrPtr[msgPtr->id - 1];
+						nonPrimes++;
+					}
+					dead++;
+					pids[i] = 0;
+					launched--;
+					}
 				}
+	
 			}
-
+		
 		}
+		
+		if(dead == numChildren)
+		{
+			break;
+		}
+
+		
 				
 	}
-	
+	//write primes to file	
 	for(i = 0; i < primes; i++)
 	{
 		fprintf(fp,"primes %d\n", prime[i]);
 	}
-
+	//write non-primes to file
 	for(i = 0; i < nonPrimes; i++)
 	{
 		fprintf(fp,"nonPrimes %d\n", nonPrime[i]);
@@ -204,8 +210,11 @@ int main(int argc, char *argv[])
 	cleanUp(clockPtr, clockId);
 	cleanUp(msgPtr, msgId);
 	cleanUp(arrPtr, arrId);
-	fclose(fp);	
+	fclose(fp);
+	
 	//print();
+	
+	printf("process finished and written to %s\n", filename);
 	
 	return 0;
 }
@@ -250,6 +259,10 @@ void setOpt(int argc, char *argv[])
 			case 'n':
 				n_maxChild = 1;
 				numChildren = atoi(optarg);
+				if(numChildren > 20)
+				{
+					numChildren = 20;
+				}
 				break;
 			
 			case 's':

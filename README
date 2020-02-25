@@ -5,28 +5,30 @@
 				How to Run 
 
 ================================================================================
-
-
-
-
-
-
-
-
-
-
-
-
+run make
+then run ./oss -n -s -b -i -o
+-n: number of max child processes in system to ever run
+-s: number of child processes allowed in system at one time
+-b: number to test primality of
+-i: number to increment by
+-o: filename for primality output/child launch & end time
+if an error occurs you will have to use ipcs | grep {user id}
 
 ================================================================================
 				
 				Issues
 
 ================================================================================
+i tried using WNOHANG in waitpid() and ended up spawning too many children
+and created zombie processes. i had to set to zero in waitpid() but clock
+only increments one second for every process and child terminates immediately
 
+================================================================================
 
+				LOGS
 
+================================================================================
 
-
+you can view logs at https://github.com/ch3rc/OSp2
 
 ================================================================================

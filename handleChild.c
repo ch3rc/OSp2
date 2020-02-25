@@ -50,27 +50,20 @@ int main(int argc, char *argv[])
 	quit.sa_flags = 0;
 	if(sigaction(SIGTERM, &quit, NULL) == -1)
 		perror("handleChild: ERROR: SIGQUIT");
-		
-	printf("getting shared memory\n\n");
 
 	clockPtr = getClock(key, clockSize, &clockId);
 	msgPtr = returnMessage(key2, msgSize, &msgId);
 	arrPtr = childResults(key3, numChildren * sizeof(int), &arrId);		
-
-	printf("sec = %d nano = %d args = %d, arg0 = %s, arg1 = %s\n\n", clockPtr->sec, clockPtr->nano, argc, argv[0], argv[1]);
 
 	msgPtr->id = atoi(argv[1]);
 	msgPtr->num = atoi(argv[1]);
 
 	int num = atoi(argv[0]);
 
-	startNano = clockPtr->nano;
-	
-	//sleep(1);		
+	startNano = clockPtr->nano;		
 	
 	primeNum(num);
 
-	printf("detaching shared memory in handleChild\n\n");
 	
 	if(shmdt((void *)clockPtr) == -1)
 		perror("handleChild: ERROR: shmdt (clockPtr)");
@@ -79,11 +72,9 @@ int main(int argc, char *argv[])
 		perror("handleChild: ERROR: shmdt (msgPtr)");
 
 	if(shmdt((void *)arrPtr) == -1)
-		perror("handleChild: ERROR: shmdt (arrPtr)");
+		perror("handleChild: ERROR: shmdt (arrPtr)");	
 
-	printf("handleChild process complete\n\n");	
-	raise(SIGCHLD);
-	exit(2);
+	exit(0);
 	
 }
 
